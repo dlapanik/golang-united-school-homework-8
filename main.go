@@ -43,8 +43,6 @@ func init() {
 	flag.StringVar(&fileNameArg, "fileName", "", "file name with user data")
 	flag.StringVar(&itemArg, "item", "", "item to be created")
 	flag.StringVar(&idArg, "id", "", "person id")
-
-	flag.Parse()
 }
 
 func Perform(args Arguments, writer io.Writer) error {
@@ -78,11 +76,16 @@ func Perform(args Arguments, writer io.Writer) error {
 			return err
 		}
 
-		users = append(users, user)
+		i, _ := findUserById(user.ID, users)
+		if i > -1 {
+			fmt.Fprintf(writer, "Item with id %s already exists", user.ID)
+		} else {
+			users = append(users, user)
 
-		err = saveUsers(file, users)
-		if err != nil {
-			return err
+			err = saveUsers(file, users)
+			if err != nil {
+				return err
+			}
 		}
 
 	case findById:
@@ -91,20 +94,15 @@ func Perform(args Arguments, writer io.Writer) error {
 			return err
 		}
 
-		idToFind := args["id"]
-		userFound := false
-		for _, user := range users {
-			if user.ID == idToFind {
-				userRow, err := json.Marshal(user)
-				if err != nil {
-					return err
-				}
-				fmt.Fprintf(writer, string(userRow))
-				break
+		i, user := findUserById(args["id"], users)
+		if i > -1 {
+			userRow, err := json.Marshal(*user)
+			if err != nil {
+				return err
 			}
-		}
+			fmt.Fprint(writer, string(userRow))
 
-		if !userFound {
+		} else {
 			fmt.Fprintf(writer, "")
 		}
 
@@ -114,22 +112,25 @@ func Perform(args Arguments, writer io.Writer) error {
 			return err
 		}
 
-		idToRemove := args["id"]
-		userFound := false
-		for i, user := range users {
-			if user.ID == idToRemove {
-				users = append(users[:i], users[i+1:]...)
-				userFound = true
-				saveUsers(file, users)
-				break
-			}
-		}
-
-		if !userFound {
-			fmt.Fprintf(writer, "Item with id %s not found", idToRemove)
+		i, _ := findUserById(args["id"], users)
+		if i > -1 {
+			users = append(users[:i], users[i+1:]...)
+			saveUsers(file, users)
+		} else {
+			fmt.Fprintf(writer, "Item with id %s not found", args["id"])
 		}
 	}
 	return nil
+}
+
+func findUserById(idToFind string, users []User) (int, *User) {
+	for i, user := range users {
+		if user.ID == idToFind {
+			return i, &user
+		}
+	}
+
+	return -1, &User{}
 }
 
 func saveUsers(file *os.File, users []User) error {
@@ -209,6 +210,7 @@ func validateArgs(args Arguments) error {
 }
 
 func parseArgs() Arguments {
+	flag.Parse()
 	return Arguments{
 		"id":        idArg,
 		"operation": operationArg,
